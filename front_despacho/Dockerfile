@@ -6,24 +6,26 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# ── Stage 2: Serve con Nginx (usuario no-root, envsubst para IPs) ─────────────
+# ── Stage 2: Serve con Nginx ─────────────────────────────────────────────────
 FROM nginx:alpine
 
 RUN apk add --no-cache gettext
 
-# Puerto 8080 no requiere root
-RUN mkdir -p /var/cache/nginx /var/run \
-    && chown -R nginx:nginx /var/cache/nginx /var/run /var/log/nginx /usr/share/nginx/html \
-    && chmod -R 755 /etc/nginx/conf.d
+# Crea directorio para PID y ajusta permisos
+RUN mkdir -p /var/cache/nginx /tmp/nginx \
+    && chown -R nginx:nginx /var/cache/nginx /tmp/nginx
+
+# Nginx PID en /tmp para no requerir root
+RUN sed -i 's|pid\s*/var/run/nginx.pid|pid /tmp/nginx.pid|' /etc/nginx/nginx.conf
 
 COPY --from=builder /app/dist /usr/share/nginx/html
-
-# Copiar la plantilla de nginx (con ${BACKEND_DESPACHOS} y ${BACKEND_VENTAS})
 COPY nginx.conf /etc/nginx/conf.d/default.conf.template
-
-# Entrypoint: sustituye variables y arranca nginx
 COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
+
+# Permisos necesarios para usuario nginx
+RUN chmod +x /docker-entrypoint.sh \
+    && chown -R nginx:nginx /usr/share/nginx/html \
+    && chmod 777 /etc/nginx/conf.d
 
 USER nginx
 
