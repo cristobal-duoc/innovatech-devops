@@ -6,26 +6,22 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# ── Stage 2: Serve con Nginx ─────────────────────────────────────────────────
+# ── Stage 2: Serve con Nginx (usuario no-root) ───────────────────────────────
 FROM nginx:alpine
 
 RUN apk add --no-cache gettext
 
-# Crea directorio para PID y ajusta permisos
-RUN mkdir -p /var/cache/nginx /tmp/nginx \
-    && chown -R nginx:nginx /var/cache/nginx /tmp/nginx
-
-# Nginx PID en /tmp para no requerir root
-RUN sed -i 's|pid\s*/var/run/nginx.pid|pid /tmp/nginx.pid|' /etc/nginx/nginx.conf
+# Copiar nginx.conf principal modificado para usar /tmp como pid y conf dir
+COPY nginx-main.conf /etc/nginx/nginx.conf
 
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf.template
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 
-# Permisos necesarios para usuario nginx
-RUN chmod +x /docker-entrypoint.sh \
-    && chown -R nginx:nginx /usr/share/nginx/html \
-    && chmod 777 /etc/nginx/conf.d
+RUN chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx \
+    && chmod +x /docker-entrypoint.sh \
+    && mkdir -p /tmp/nginx-conf \
+    && chown -R nginx:nginx /tmp/nginx-conf
 
 USER nginx
 
