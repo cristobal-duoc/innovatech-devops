@@ -53,6 +53,8 @@ jobs:
               "docker rm   innovatech-frontend || true",
               "docker run -d --name innovatech-frontend --restart unless-stopped \
                 -p 80:8080 \
+                -e BACKEND_DESPACHOS=${{ secrets.DB_ENDPOINT }} \
+                -e BACKEND_VENTAS=${{ secrets.DB_ENDPOINT }} \
                 ${{ secrets.ECR_REPO_FRONTEND }}:latest"
             ]' \
             --output text
