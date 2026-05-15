@@ -1,0 +1,98 @@
+version: "3.9"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Innovatech Chile — Stack completo (desarrollo local)
+# Uso: docker compose up --build
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Base de datos MySQL ────────────────────────────────────────────────────
+  db:
+    image: mysql:8.0
+    container_name: innovatech-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root123}
+      MYSQL_DATABASE:      ${DB_NAME:-innovatech}
+      MYSQL_USER:          ${DB_USERNAME:-appuser}
+      MYSQL_PASSWORD:      ${DB_PASSWORD:-apppass}
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - backend-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend Despachos (Spring Boot, puerto 8081) ───────────────────────────
+  backend-despachos:
+    build:
+      context: ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
+      dockerfile: Dockerfile
+    container_name: innovatech-despachos
+    restart: unless-stopped
+    environment:
+      DB_ENDPOINT: db
+      DB_PORT:     3306
+      DB_NAME:     ${DB_NAME:-innovatech}
+      DB_USERNAME: ${DB_USERNAME:-appuser}
+      DB_PASSWORD: ${DB_PASSWORD:-apppass}
+    ports:
+      - "8081:8081"
+    networks:
+      - backend-net
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ── Backend Ventas (Spring Boot, puerto 8080) ──────────────────────────────
+  backend-ventas:
+    build:
+      context: ./back-Ventas_SpringBoot/Springboot-API-REST
+      dockerfile: Dockerfile
+    container_name: innovatech-ventas
+    restart: unless-stopped
+    environment:
+      DB_ENDPOINT: db
+      DB_PORT:     3306
+      DB_NAME:     ${DB_NAME:-innovatech}
+      DB_USERNAME: ${DB_USERNAME:-appuser}
+      DB_PASSWORD: ${DB_PASSWORD:-apppass}
+    ports:
+      - "8080:8080"
+    networks:
+      - backend-net
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ── Frontend React/Vite (Nginx, puerto 80→8080) ───────────────────────────
+  frontend:
+    build:
+      context: ./front_despacho
+      dockerfile: Dockerfile
+    container_name: innovatech-frontend
+    restart: unless-stopped
+    ports:
+      - "80:8080"
+    networks:
+      - frontend-net
+      - backend-net
+    depends_on:
+      - backend-despachos
+      - backend-ventas
+
+# ── Redes ─────────────────────────────────────────────────────────────────────
+networks:
+  frontend-net:
+    driver: bridge
+  backend-net:
+    driver: bridge
+
+# ── Volúmenes ─────────────────────────────────────────────────────────────────
+volumes:
+  db_data:
+    driver: local

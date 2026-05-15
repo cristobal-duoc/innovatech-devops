@@ -1,0 +1,61 @@
+name: CI/CD — Backend Despachos
+
+on:
+  push:
+    branches: ["deploy"]
+    paths:
+      - "back-Despachos_SpringBoot/**"
+
+jobs:
+  build-push-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Obtener el código
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      # 2. Autenticar con AWS
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token:     ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region:            ${{ secrets.AWS_REGION }}
+
+      # 3. Login en Amazon ECR
+      - name: Login en Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # 4. Build y Push de la imagen Docker
+      - name: Build y Push — Despachos
+        run: |
+          cd back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
+          docker build -t innovatech-despachos .
+          docker tag innovatech-despachos:latest ${{ secrets.ECR_REPO_DESPACHOS }}:latest
+          docker push ${{ secrets.ECR_REPO_DESPACHOS }}:latest
+
+      # 5. Despliegue automático en la instancia EC2 Backend (subred privada) vía SSM
+      - name: Desplegar en EC2 Backend vía SSM
+        run: |
+          aws ssm send-command \
+            --instance-ids "${{ secrets.EC2_BACKEND_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy innovatech-despachos desde ECR" \
+            --parameters commands='[
+              "set -e",
+              "aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}",
+              "docker pull ${{ secrets.ECR_REPO_DESPACHOS }}:latest",
+              "docker stop innovatech-despachos || true",
+              "docker rm   innovatech-despachos || true",
+              "docker run -d --name innovatech-despachos --restart unless-stopped \
+                -p 8081:8081 \
+                -e DB_ENDPOINT=${{ secrets.DB_ENDPOINT }} \
+                -e DB_PORT=3306 \
+                -e DB_NAME=${{ secrets.DB_NAME }} \
+                -e DB_USERNAME=${{ secrets.DB_USERNAME }} \
+                -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+                ${{ secrets.ECR_REPO_DESPACHOS }}:latest"
+            ]' \
+            --output text

@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+
+# Maven build output
+**/target/
+
+# Node modules
+**/node_modules/
+
+# Environment files (NUNCA subir credenciales)
+.env
+.env.local
+*.env
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Logs
+*.log
