@@ -1,10 +1,12 @@
 name: CI/CD — Frontend React
 
 on:
+  workflow_dispatch:
   push:
     branches: ["deploy"]
     paths:
       - "front_despacho/**"
+      - ".github/workflows/cicd-frontend.yml"
 
 jobs:
   build-push-deploy:
