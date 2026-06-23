@@ -1,5 +1,6 @@
-name: CI/CD — Backend Despachos
+name: CI/CD — Backend Despachos (ECS)
 
+# build → push (ECR) → deploy (ECS Fargate)
 on:
   workflow_dispatch:
   push:
@@ -8,56 +9,60 @@ on:
       - "back-Despachos_SpringBoot/**"
       - ".github/workflows/cicd-despachos.yml"
 
+env:
+  AWS_REGION: us-east-1
+  ECS_CLUSTER: innovatech-cluster
+  ECS_SERVICE: innovatech-despachos
+  CONTAINER_NAME: despachos
+  TASK_FAMILY: innovatech-despachos
+
 jobs:
   build-push-deploy:
     runs-on: ubuntu-latest
-
     steps:
-      # 1. Obtener el código
       - name: Checkout código
         uses: actions/checkout@v4
 
-      # 2. Autenticar con AWS
       - name: Configurar credenciales AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token:     ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region:            ${{ secrets.AWS_REGION }}
+          aws-region:            ${{ env.AWS_REGION }}
 
-      # 3. Login en Amazon ECR
       - name: Login en Amazon ECR
+        id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # 4. Build y Push de la imagen Docker
       - name: Build y Push — Despachos
+        env:
+          IMAGE: ${{ secrets.ECR_REPO_DESPACHOS }}
         run: |
           cd back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
-          docker build -t innovatech-despachos .
-          docker tag innovatech-despachos:latest ${{ secrets.ECR_REPO_DESPACHOS }}:latest
-          docker push ${{ secrets.ECR_REPO_DESPACHOS }}:latest
+          docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" .
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
 
-      # 5. Despliegue automático en la instancia EC2 Backend (subred privada) vía SSM
-      - name: Desplegar en EC2 Backend vía SSM
+      - name: Descargar task definition actual
         run: |
-          aws ssm send-command \
-            --instance-ids "${{ secrets.EC2_BACKEND_INSTANCE_ID }}" \
-            --document-name "AWS-RunShellScript" \
-            --comment "Deploy innovatech-despachos desde ECR" \
-            --parameters commands='[
-              "set -e",
-              "aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}",
-              "docker pull ${{ secrets.ECR_REPO_DESPACHOS }}:latest",
-              "docker stop innovatech-despachos || true",
-              "docker rm   innovatech-despachos || true",
-              "docker run -d --name innovatech-despachos --restart unless-stopped \
-                -p 8081:8081 \
-                -e DB_ENDPOINT=${{ secrets.DB_ENDPOINT }} \
-                -e DB_PORT=3306 \
-                -e DB_NAME=${{ secrets.DB_NAME }} \
-                -e DB_USERNAME=${{ secrets.DB_USERNAME }} \
-                -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
-                ${{ secrets.ECR_REPO_DESPACHOS }}:latest"
-            ]' \
-            --output text
+          aws ecs describe-task-definition --task-definition "$TASK_FAMILY" \
+            --query "taskDefinition" \
+            | jq 'del(.taskDefinitionArn,.requiresAttributes,.compatibilities,.revision,.status,.registeredAt,.registeredBy,.deregisteredAt)' \
+            > task-def.json
+
+      - name: Renderizar nueva imagen en la task definition
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-def.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ secrets.ECR_REPO_DESPACHOS }}:${{ github.sha }}
+
+      - name: Desplegar en ECS y esperar estabilidad
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true

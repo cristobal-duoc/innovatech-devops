@@ -1,5 +1,6 @@
-name: CI/CD — Frontend React
+name: CI/CD — Frontend React (ECS)
 
+# build → push (ECR) → deploy (ECS Fargate, detrás del ALB)
 on:
   workflow_dispatch:
   push:
@@ -8,53 +9,60 @@ on:
       - "front_despacho/**"
       - ".github/workflows/cicd-frontend.yml"
 
+env:
+  AWS_REGION: us-east-1
+  ECS_CLUSTER: innovatech-cluster
+  ECS_SERVICE: innovatech-frontend
+  CONTAINER_NAME: frontend
+  TASK_FAMILY: innovatech-frontend
+
 jobs:
   build-push-deploy:
     runs-on: ubuntu-latest
-
     steps:
-      # 1. Obtener el código
       - name: Checkout código
         uses: actions/checkout@v4
 
-      # 2. Autenticar con AWS
       - name: Configurar credenciales AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token:     ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region:            ${{ secrets.AWS_REGION }}
+          aws-region:            ${{ env.AWS_REGION }}
 
-      # 3. Login en Amazon ECR
       - name: Login en Amazon ECR
+        id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # 4. Build y Push de la imagen Docker
       - name: Build y Push — Frontend
+        env:
+          IMAGE: ${{ secrets.ECR_REPO_FRONTEND }}
         run: |
           cd front_despacho
-          docker build -t innovatech-frontend .
-          docker tag innovatech-frontend:latest ${{ secrets.ECR_REPO_FRONTEND }}:latest
-          docker push ${{ secrets.ECR_REPO_FRONTEND }}:latest
+          docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" .
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
 
-      # 5. Despliegue en EC2 Frontend (subred pública, acceso desde Internet) vía SSM
-      - name: Desplegar en EC2 Frontend vía SSM
+      - name: Descargar task definition actual
         run: |
-          aws ssm send-command \
-            --instance-ids "${{ secrets.EC2_FRONTEND_INSTANCE_ID }}" \
-            --document-name "AWS-RunShellScript" \
-            --comment "Deploy innovatech-frontend desde ECR" \
-            --parameters commands='[
-              "set -e",
-              "aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}",
-              "docker pull ${{ secrets.ECR_REPO_FRONTEND }}:latest",
-              "docker stop innovatech-frontend || true",
-              "docker rm   innovatech-frontend || true",
-              "docker run -d --name innovatech-frontend --restart unless-stopped \
-                -p 80:8080 \
-                -e BACKEND_DESPACHOS=${{ secrets.DB_ENDPOINT }} \
-                -e BACKEND_VENTAS=${{ secrets.DB_ENDPOINT }} \
-                ${{ secrets.ECR_REPO_FRONTEND }}:latest"
-            ]' \
-            --output text
+          aws ecs describe-task-definition --task-definition "$TASK_FAMILY" \
+            --query "taskDefinition" \
+            | jq 'del(.taskDefinitionArn,.requiresAttributes,.compatibilities,.revision,.status,.registeredAt,.registeredBy,.deregisteredAt)' \
+            > task-def.json
+
+      - name: Renderizar nueva imagen en la task definition
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-def.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ secrets.ECR_REPO_FRONTEND }}:${{ github.sha }}
+
+      - name: Desplegar en ECS y esperar estabilidad
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
