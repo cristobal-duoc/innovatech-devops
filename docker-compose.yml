@@ -76,6 +76,9 @@ services:
       dockerfile: Dockerfile
     container_name: innovatech-frontend
     restart: unless-stopped
+    environment:
+      BACKEND_DESPACHOS: innovatech-despachos
+      BACKEND_VENTAS:    innovatech-ventas
     ports:
       - "80:8080"
     networks:
