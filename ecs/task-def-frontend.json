@@ -15,8 +15,8 @@
         { "containerPort": 8080, "protocol": "tcp" }
       ],
       "environment": [
-        { "name": "BACKEND_DESPACHOS", "value": "backend-despachos.innovatech.local" },
-        { "name": "BACKEND_VENTAS",    "value": "backend-ventas.innovatech.local" }
+        { "name": "BACKEND_DESPACHOS", "value": "${ALB_INT_DNS}" },
+        { "name": "BACKEND_VENTAS",    "value": "${ALB_INT_DNS}" }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",

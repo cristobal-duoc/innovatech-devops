@@ -6,13 +6,13 @@ no-root). Escucha en el **puerto 8080**.
 
 ## Rol en la arquitectura
 - Servicio ECS `innovatech-ventas` en subred privada (sin IP pública).
-- Descubrible internamente como **`backend-ventas.innovatech.local`** (Cloud Map).
-- El frontend lo alcanza vía `/api/ventas/`.
+- Registrado en el **ALB interno** (`innovatech-alb-int`, listener `:8080`).
+- El frontend lo alcanza vía `/api/ventas/` → ALB interno.
 
 ## Variables de entorno
 | Variable      | Origen           | Descripción                          |
 |---------------|------------------|--------------------------------------|
-| `DB_ENDPOINT` | task definition  | `db.innovatech.local`                |
+| `DB_ENDPOINT` | task definition  | endpoint de **Amazon RDS** (`innovatech-mysql…`) |
 | `DB_PORT`     | task definition  | `3306`                               |
 | `DB_NAME`     | **Secrets Manager** | nombre de la base de datos        |
 | `DB_USERNAME` | **Secrets Manager** | usuario de BD                     |

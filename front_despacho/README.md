@@ -12,7 +12,8 @@ backends.
 
 ## Proxy a backends (Front → Back)
 `nginx.conf` enruta por path hacia los backends, cuyos hostnames se inyectan por
-variables de entorno (resueltas vía AWS Cloud Map en ECS):
+variables de entorno. En ECS apuntan al **ALB interno** (`innovatech-alb-int`),
+que tiene un listener por backend (`:8080` ventas, `:8081` despachos):
 
 | Ruta pública            | Destino interno                          |
 |-------------------------|------------------------------------------|
@@ -21,8 +22,11 @@ variables de entorno (resueltas vía AWS Cloud Map en ECS):
 
 | Variable             | Valor en ECS                              |
 |----------------------|-------------------------------------------|
-| `BACKEND_VENTAS`     | `backend-ventas.innovatech.local`         |
-| `BACKEND_DESPACHOS`  | `backend-despachos.innovatech.local`      |
+| `BACKEND_VENTAS`     | DNS del ALB interno (`innovatech-alb-int…`) |
+| `BACKEND_DESPACHOS`  | DNS del ALB interno (`innovatech-alb-int…`) |
+
+> El Learner Lab bloquea AWS Cloud Map, por eso el descubrimiento Front→Back se
+> hace por el ALB interno en vez de DNS de servicio.
 
 `docker-entrypoint.sh` aplica `envsubst` sobre la plantilla de nginx en arranque.
 
