@@ -23,6 +23,20 @@ jobs:
       - name: Checkout código
         uses: actions/checkout@v4
 
+      # ── TEST/BUILD: verifica que el frontend compila antes de la imagen ──
+      - name: Configurar Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: front_despacho/package-lock.json
+
+      - name: Test — Frontend (instala y compila)
+        run: |
+          cd front_despacho
+          npm ci
+          npm run build
+
       - name: Configurar credenciales AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:

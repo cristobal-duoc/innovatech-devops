@@ -23,6 +23,19 @@ jobs:
       - name: Checkout código
         uses: actions/checkout@v4
 
+      # ── TEST: pruebas de contexto (H2) antes de construir ──
+      - name: Configurar JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Test — Despachos (contexto con H2)
+        run: |
+          cd back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
+          mvn -B test
+
       - name: Configurar credenciales AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
